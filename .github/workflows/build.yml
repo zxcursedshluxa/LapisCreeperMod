@@ -17,7 +17,7 @@ jobs:
         run: |
           curl -L https://github.com -o template.zip
           unzip template.zip
-          cd fabric-example-mod-1.21.4
+          cd fabric-example-mod-1.21
           
           # Настраиваем конфигурацию мода
           sed -i 's/modid/lapisspawner/g' fabric.mod.json
@@ -90,4 +90,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: LapisSpawner-Mod
-          path: fabric-example-mod-1.21.4/build/libs/*.jar
+          path: fabric-example-mod-1.21/build/libs/*.jar
