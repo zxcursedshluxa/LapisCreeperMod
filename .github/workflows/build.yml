@@ -1,0 +1,93 @@
+name: Build Mod
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'microsoft'
+          java-version: '21'
+
+      - name: Download Fresh Template
+        run: |
+          curl -L https://github.com -o template.zip
+          unzip template.zip
+          cd fabric-example-mod-1.21.4
+          
+          # Настраиваем конфигурацию мода
+          sed -i 's/modid/lapisspawner/g' fabric.mod.json
+          sed -i 's/Example Mod/Lapis Spawner/g' fabric.mod.json
+          mv src/main/resources/modid.mixins.json src/main/resources/lapisspawner.mixins.json
+          sed -i 's/modid/lapisspawner/g' src/main/resources/lapisspawner.mixins.json
+          
+          # Записываем чистый Java код миксина подмены блока лазурита
+          mkdir -p src/main/java/net/fabricmc/example/mixin
+          cat << 'EOF' > src/main/java/net/fabricmc/example/mixin/LapisSpawnerMixin.java
+          package net.fabricmc.example.mixin;
+
+          import net.minecraft.block.BlockState;
+          import net.minecraft.block.Blocks;
+          import net.minecraft.block.entity.BlockEntity;
+          import net.minecraft.block.entity.MobSpawnerBlockEntity;
+          import net.minecraft.client.world.ClientWorld;
+          import net.minecraft.entity.EntityType;
+          import net.minecraft.util.math.BlockPos;
+          import org.spongepowered.asm.mixin.Mixin;
+          import org.spongepowered.asm.mixin.injection.At;
+          import org.spongepowered.asm.mixin.injection.Inject;
+          import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+          @Mixin(ClientWorld.class)
+          public class LapisSpawnerMixin {
+              @Inject(method = "getBlockEntity", at = @At("HEAD"), cancellable = true)
+              private void onGetBlockEntity(BlockPos pos, CallbackInfoReturnable<BlockEntity> cir) {
+                  ClientWorld world = (ClientWorld) (Object) this;
+                  BlockState state = world.getBlockState(pos);
+                  if (state.isOf(Blocks.LAPIS_BLOCK)) {
+                      MobSpawnerBlockEntity spawner = new MobSpawnerBlockEntity(pos, Blocks.SPAWNER.getDefaultState());
+                      spawner.getLogic().setEntityId(EntityType.CREEPER, world);
+                      cir.setReturnValue(spawner);
+                  }
+              }
+          }
+          EOF
+
+          # Регистрируем миксин в файле настроек JSON
+          cat << 'EOF' > src/main/resources/lapisspawner.mixins.json
+          {
+            "required": true,
+            "package": "net.fabricmc.example.mixin",
+            "compatibilityLevel": "JAVA_21",
+            "mixins": [
+              "LapisSpawnerMixin"
+            ],
+            "injectors": {
+              "defaultRequire": 1
+            }
+          }
+          EOF
+
+          # Создаем файл модели, чтобы текстура лазурита сменилась на клетку спавнера
+          mkdir -p src/main/resources/assets/minecraft/blockstates
+          cat << 'EOF' > src/main/resources/assets/minecraft/blockstates/lapis_block.json
+          {
+            "variants": {
+              "": { "model": "minecraft:block/spawner" }
+            }
+          }
+          EOF
+
+          # Запускаем сборку внутри папки шаблона
+          chmod +x gradlew
+          ./gradlew build --no-daemon
+
+      - name: Upload Finished Mod File
+        uses: actions/upload-artifact@v4
+        with:
+          name: LapisSpawner-Mod
+          path: fabric-example-mod-1.21.4/build/libs/*.jar
